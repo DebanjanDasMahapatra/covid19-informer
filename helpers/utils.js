@@ -39,33 +39,33 @@ exports.updateIndia=async()=>{
     lastIndiaData.con=liveOfficialData.data.total.confirmed;
     lastIndiaData.rec=liveOfficialData.data.total.recovered;
     lastIndiaData.dead=liveOfficialData.data.total.deaths;
-    
-    
-
-
+    let py=await shell.exec('python3 -W ignore ./helpers/predictor.py '+last.con+" "+last.dead+" "+last.rec)
+    if(py.stderr)
+        throw py.stderr
+    py.stdout=py.stdout.split('\n').reverse()
     let predicted={
-        con:parseInt(0),
-        dead:parseInt(0),
-        rec:parseInt(0)
+        con:parseInt(py.stdout[3].trim()),
+        dead:parseInt(py.stdout[2].trim()),
+        rec:parseInt(py.stdout[1].trim())
     }
     lastIndiaData.message=Message.chartCaption(predicted,last)
     lastIndiaData.predicted=predicted;
     await lastIndiaData.save()
-    
-    
-
-
-
-
-
-
-
-
-
-
-
-
-
+    const urlToCapture = process.env.BASEURL+'/graph'; 
+    const outputFilePath = path.join(__dirname,"../public/chart.png");
+    const browser = await puppeteer.launch();
+    const page = await browser.newPage();
+    await page.setViewport({
+        width: 786,
+        height: 543,
+        deviceScaleFactor: 1,
+    });
+    await page.goto(urlToCapture);
+    await page.waitForSelector('#shu')
+    await page.waitFor(1000);
+    await page.screenshot({path: outputFilePath});
+    console.log("ss taken")
+    await browser.close();
     }
     catch(e){
         console.log(e)
@@ -75,7 +75,7 @@ exports.updateIndia=async()=>{
 exports.sendUpdate=async()=>{
     try{
         lastIndiaData=await Config.findOne({active:true});
-        console.log(lastIndiaData.message);
+        await ChatApi.sendFileToAll(process.env.BASEURL+'/chart.png',JSON.stringify(new Date()),lastIndiaData.message)
     }catch(e){
         console.log(e)
     }
@@ -83,7 +83,7 @@ exports.sendUpdate=async()=>{
 exports.sendUpdateAdmin=async()=>{
     try{
         let lastIndiaData=await Config.findOne({active:true});
-        console.log(lastIndiaData.message);
+        await ChatApi.sendFileToAdmin(process.env.BASEURL+'/chart.png',JSON.stringify(new Date()),lastIndiaData.message)
     }catch(e){
         console.log(e)
     }
@@ -306,13 +306,13 @@ exports.getUpdates=async()=>{
             console.log("from here")
             message+=Message.ending(live.data.total,lastIndiaData.con,tagNum)
             try{
-                console.log(message);
-
-
-
-
-
-
+                let all=await request.post(process.env.BASEURL+'/admin/sendMessage',{
+                    json: true, 
+                    body: {
+                      "typ":"everyone",
+                      "message":message
+                      }});
+                  //await ChatApi.sendToAll(message);
                 return true
             }
             catch(e){
@@ -386,13 +386,13 @@ exports.getRecoveries=async()=>{
             console.log("from here")
             message+=Message.endingRec(rec,tagNum)
             try{
-                console.log(message);
-                
-
-
-
-
-
+                let all=await request.post(process.env.BASEURL+'/admin/sendMessage',{
+                  json: true, 
+                  body: {
+                    "typ":"everyone",
+                    "message":message
+                    }});
+                //await ChatApi.sendToAll(message);
                 return true
             }
             catch(e){
@@ -405,6 +405,105 @@ exports.getRecoveries=async()=>{
         console.log(e)
     }
     
+}
+
+
+
+
+
+
+
+
+
+
+
+
+exports.sendMessageToAll = (messageToSend)=>{
+
+    let mainPromise = new Promise((resolve1,reject1)=>{
+        User.find({},(err,users)=>{
+            //console.log("Users ",users);
+            if(err) reject1(err);
+            let promises = [];
+            users.forEach(user=>{
+                let interval;
+                let number = user.number;
+                //console.log("Number ",number);
+                let def = new Promise((resolve,reject)=>{
+                    let to = 'whatsapp:+'+number;
+                    let skip = Math.floor(Math.random()*10)
+                    //console.log(skip,to);
+                    interval = setInterval(() => {
+                        skip--;
+                        if(skip == 0)
+                        {
+                        twilio.messages.create({
+                            from: 'whatsapp:+14155238886',
+                            body: messageToSend,
+                            to: to
+                            }).then(message => {
+                                //console.log("Number ",to);
+                                clearInterval(interval);
+                                resolve(message);
+                            }).catch(err => {
+                                //console.log("Number ",to,err);
+                                clearInterval(interval);
+                                reject(err);
+                            });
+                        }
+                    },500);
+                });
+                promises.push(def);
+            });
+            Promise.all(promises).then(u=>{
+                    resolve1(u);
+            }).catch(e=>{
+                reject1(e);
+            })
+        });
+    });
+    return mainPromise;
+}
+exports.sendMsg = (num,message)=>{
+    let def = new Promise((resolve,reject)=>{
+        let to = 'whatsapp:+'+num;
+        if(!(process.env.CHAT_API_INSTANCE&&process.env.CHAT_API_TOKEN))
+            reject("Env error");
+        let msg ={
+            'body':message,
+            'phone':to
+        }
+        request.post("https://api.chat-api.com/"+process.env.CHAT_API_INSTANCE+"/sendMessage?token="+process.env.CHAT_API_TOKEN,{json: true, body: msg}).then(r=>{
+        if(r.sent){
+            resolve(r);
+        }else{
+            reject("Not sent"+ to);
+        }
+        }).catch(e=>{
+            reject(e);
+        })
+    });
+    promises.push(def);
+}
+exports.sendMessageToAll2 = (messageToSend)=>{
+    let mainPromise = new Promise((resolve1,reject1)=>{
+        User.find({},(err,users)=>{
+            console.log("Users ",users);
+            if(err) reject1(err);
+            let promises = [];
+            users.forEach(user=>{
+                let number = user.number;
+                console.log("Number ",number);
+                promises.push(this.sendMsg(number,messageToSend)); 
+            });
+            Promise.all(promises).then(u=>{
+                    resolve1(u);
+            }).catch(e=>{
+                reject1(e);
+            })
+        });
+    });
+    return mainPromise;
 }
 
 exports.updateDistrcit= async ()=>{
