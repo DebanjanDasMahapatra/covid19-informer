@@ -1,0 +1,26 @@
+body {
+  padding: 0px;
+  margin: 0px;
+}
+
+a {
+  color: #00B7FF;
+}
+.c3-line {
+  stroke-width: 5px;
+}
+.c3-axis-x{
+  stroke-width: 2px;
+}
+.c3-axis-y{
+  stroke-width: 2px;
+}
+.c3 path, .c3 line{
+  stroke: olive;
+}
+.c3-axis-y-label{
+  font-size: small;
+}
+.c3-axis-x-label{
+  font-size: small;
+}
